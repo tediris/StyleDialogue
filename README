@@ -1,0 +1,3 @@
+grep -v '^string' yourfile.txt > stripped.txt
+
+you can do this to remove stuff from files you don't want
