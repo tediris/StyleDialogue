@@ -10,6 +10,7 @@ class Generator:
         self.encoder()
         self.decoder()
         self.loss_op()
+        self.init_op = tf.global_variables_initializer()
 
     def initialize(self, session):
         session.run(self.init_op)
@@ -73,3 +74,59 @@ class Generator:
         extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(extra_update_ops):
             self.train_step = optimizer.minimize(self.loss)
+
+    def make_batch(self, dataset, iteration):
+        batch_size = self.FLAGS.batch_size
+        train_lines, train_labels = dataset
+        start_index = iteration*batch_size
+
+        #make padded enc batch
+        lines = train_lines[start_index:start_index+batch_size]
+        lines_len = np.array([len(q) for q in lines])
+        lines_max_len = np.max(lines_len)
+        lines_batch = np.array([q + [PAD_ID]*(lines_max_len - len(q)) for q in lines])
+
+        return lines_batch, lines_len
+
+    # def build_model(self):
+    #     self.test =
+    def optimize(self, session, data):
+        lines_batch, lines_len, labels_batch = data
+        feed_dict = {}
+        feed_dict[self.lines_placeholder] = lines_batch
+        feed_dict[self.lines_len_placeholder] = lines_len
+
+        output_feed = [self.loss, self.train_step]
+        return session.run(output_feed, feed_dict)
+
+    def train(self, session, dataset, train_dir):
+
+        # some free code to print out number of parameters in your model
+        # it's always good to check!
+        # you will also want to save your model parameters in train_dir
+        # so that you can use your trained model to make predictions, or
+        # even continue training
+
+        tic = time.time()
+        params = tf.trainable_variables()
+        num_params = sum(map(lambda t: np.prod(tf.shape(t.value()).eval()), params))
+        toc = time.time()
+        logging.info("Number of params: %d (retreival took %f secs)" % (num_params, toc - tic))
+
+
+        #run main training loop: (only 1 epoch for now)
+        train_lines, train_labels = dataset
+        max_iters = np.ceil(len(train_lines)/float(self.FLAGS.batch_size))
+        print("Max iterations: " + str(max_iters))
+        for epoch in range(1):
+            #temp hack to only train on some small subset:
+            # max_iters = 1
+            for iteration in range(int(max_iters)):
+                print("Current iteration: " + str(iteration))
+                lines_batch, lines_len = self.make_batch(dataset, iteration)
+                # lr = tf.train.exponential_decay(self.FLAGS.learning_rate, iteration, 100, 0.96) #iteration here should be global when multiple epochs
+                #retrieve useful info from training - see optimize() function to set what we're tracking
+                loss, _ = self.optimize(session, (lines_batch, lines_len))
+                # print("accuracy: " + str(accuracy))
+                print("Current Loss: " + str(loss))
+                # print(grad_norm)
