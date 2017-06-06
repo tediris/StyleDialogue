@@ -1,8 +1,13 @@
 import tensorflow as tf
+import numpy as np
+from data import PAD_ID
+from tensorflow.python.ops import variable_scope as vs
+import time
+import logging
 
 
 class Generator:
-    def __init__(self, vocab_size):
+    def __init__(self, FLAGS, vocab_size):
         self.vocab_size = vocab_size
         self.FLAGS = FLAGS
         self.setup_placeholders()
@@ -10,6 +15,7 @@ class Generator:
         self.encoder()
         self.decoder()
         self.loss_op()
+        self.optimization_op()
         self.init_op = tf.global_variables_initializer()
 
     def initialize(self, session):
@@ -34,7 +40,7 @@ class Generator:
         hidden_size = 500
         cell_fw = tf.contrib.rnn.GRUCell(hidden_size)
         cell_bw = tf.contrib.rnn.GRUCell(hidden_size)
-        outputs, output_states = bidirectional_dynamic_rnn(
+        outputs, output_states = tf.nn.bidirectional_dynamic_rnn(
             cell_fw,
             cell_bw,
             self.lines,
@@ -58,7 +64,7 @@ class Generator:
         reshaped = tf.reshape(outputs, [batch_size * max_time, hidden_dim])
         # classify all of these as words
         self.logits = tf.layers.dense(reshaped, self.vocab_size) # (batch_size x max_time) x vocab
-        decoded_words = tf.argmax(preds, axis=1) # (batch_size x max_time)
+        decoded_words = tf.argmax(self.logits, axis=1) # (batch_size x max_time)
         self.decoded_sentences = tf.reshape(decoded_words, [batch_size, max_time])
 
     def loss_op(self):
@@ -77,7 +83,7 @@ class Generator:
 
     def make_batch(self, dataset, iteration):
         batch_size = self.FLAGS.batch_size
-        train_lines, train_labels = dataset
+        train_lines = dataset
         start_index = iteration*batch_size
 
         #make padded enc batch
@@ -91,7 +97,7 @@ class Generator:
     # def build_model(self):
     #     self.test =
     def optimize(self, session, data):
-        lines_batch, lines_len, labels_batch = data
+        lines_batch, lines_len = data
         feed_dict = {}
         feed_dict[self.lines_placeholder] = lines_batch
         feed_dict[self.lines_len_placeholder] = lines_len
@@ -115,7 +121,7 @@ class Generator:
 
 
         #run main training loop: (only 1 epoch for now)
-        train_lines, train_labels = dataset
+        train_lines = dataset
         max_iters = np.ceil(len(train_lines)/float(self.FLAGS.batch_size))
         print("Max iterations: " + str(max_iters))
         for epoch in range(1):
