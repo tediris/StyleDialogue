@@ -178,10 +178,10 @@ def main(_):
         saver = tf.train.Saver(var_list=tf.trainable_variables())
         saver.restore(sess, 'ckpts/generator/model.ckpt-1')
 
-        # model.train(sess, dataset, save_train_dir)
-        decoded_ids = model.generate(sess, dataset, save_train_dir)
-        print(type(decoded_ids[0][0]))
-        printToFile("decoded_ids.txt", decoded_ids)
+        model.train(sess, dataset, save_train_dir)
+        # decoded_ids = model.generate(sess, dataset, save_train_dir)
+        # print(type(decoded_ids[0][0]))
+        # printToFile("decoded_ids.txt", decoded_ids)
         saver.save(sess, 'ckpts/generator/model.ckpt', global_step=1)
 
         # qa.evaluate_answer(sess, dataset, vocab, FLAGS.evaluate, log=True)

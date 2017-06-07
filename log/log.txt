@@ -82,3 +82,5 @@ Restoring parameters from ckpts/generator/model.ckpt-1
 Restoring parameters from ckpts/generator/model.ckpt-1
 Restoring parameters from ckpts/generator/model.ckpt-1
 Restoring parameters from ckpts/generator/model.ckpt-1
+Restoring parameters from ckpts/generator/model.ckpt-1
+Number of params: 271705 (retreival took 1.120012 secs)

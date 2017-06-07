@@ -91,12 +91,19 @@ class Generator:
             # self.mean_features = tf.reduce_mean(self.features, axis=0)
             style_classification = tf.layers.dense(final_state, 5)
 
+
     def loss_op(self):
         batch_size = tf.shape(self.lines_placeholder)[0]
         max_time = tf.shape(self.lines_placeholder)[1]
 
-        lines_reduced = self.lines#tf.reduce_mean(self.lines, axis=1)
-        outputs_reduced = self.decode_output#f.reduce_mean(self.decode_output, axis=1)
+        def avg_pool_1d(input_layer, kernel=3, stride=2, padding='VALID'):
+            input_reshape = tf.reshape(input_layer, [batch_size, max_time, 1, 100])
+            pooled = tf.nn.avg_pool(input_reshape, ksize=[1, kernel, 1, 1], strides=[1, stride, 1, 1], padding=padding)
+            return tf.reshape(pooled, [batch_size, -1, 100])
+
+        lines_reduced = avg_pool_1d(self.lines)
+        # outputs_reduced = self.decode_output#f.reduce_mean(self.decode_output, axis=1)
+        outputs_reduced = avg_pool_1d(self.decode_output)
         self.content_loss = tf.losses.mean_squared_error(lines_reduced, outputs_reduced)
         style_reshaped = tf.reshape(self.style_placeholder, [1, 100])
         style_repeated = tf.tile(style_reshaped, [batch_size, 1])
