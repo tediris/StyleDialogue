@@ -75,15 +75,22 @@ class Generator:
         # self.lines are the looked-up input, batch_size x max_time x 100
         # pretrained_embeddings is vocab_size x 100
         lines_flat = tf.reshape(self.lines, [batch_size * max_time, -1])
-        vocab_weights = tf.matmul(lines_flat, tf.transpose(self.pretrained_embeddings))
+        lines_flat = tf.nn.l2_normalize(lines_flat, dim=-1)
+        embeddings_norm = tf.nn.l2_normalize(self.pretrained_embeddings, dim=-1)
+        vocab_weights = tf.matmul(lines_flat, tf.transpose(embeddings_norm))
+
+        ### TESTING THIS ###
+        probs = tf.nn.softmax(self.logits, dim=-1)
+
+        # self.loss = tf.reduce_mean(tf.losses.softmax_cross_entropy(onehot_labels=one_hot_labels, logits=self.logits))
+        self.loss = tf.reduce_mean(tf.losses.cosine_distance(vocab_weights, probs, dim=-1))
         # this is (batch_size x time) x vocab_size
         # vocab_weights = tf.nn.l2_normalize(vocab_weights, dim=-1)
         # vocab_weights = 1.0 - (vocab_weights / tf.reduce_max(vocab_weights, axis=-1))
-        probs = tf.nn.softmax(self.logits, dim=-1)
+        # probs = tf.nn.softmax(self.logits, dim=-1)
         # probs = tf.nn.log_softmax(self.logits, dim=-1)
-        weighted_scores = vocab_weights * probs
-        self.loss = -tf.reduce_mean(weighted_scores)
-
+        # weighted_scores = vocab_weights * probs
+        # self.loss = -tf.reduce_mean(weighted_scores)
         # one_hot_labels = tf.one_hot(reshaped_input, depth=self.vocab_size) # (batch_size x max_time) x vocab
         # self.loss = tf.reduce_mean(tf.losses.softmax_cross_entropy(onehot_labels=one_hot_labels, logits=self.logits))
 
