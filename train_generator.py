@@ -116,13 +116,21 @@ def main(_):
             allIDs = allIDs + [fileID]*len(lines)
         return allLines, allIDs
 
+    '''data is of the form list of list of sentences (list of ints)'''
     def printToFile(filename, data):
+        _open = open(filename, 'w')
+        for listOfSentences in data:
+            for sentence in listOfSentences:
+                _open.write(" ".join([str(x) for x in sentence]) + "\n")
+
+    '''I am so sorry. This one writes list of ints or list of lists'''
+    def printToFile_standard(filename, data):
         _open = open(filename, 'w')
         for line in data:
             if type(line) is int:
                 _open.write(str(line) + "\n")
             else:
-                _open.write(" ".join(line) + "\n")
+                _open.write(" ".join([str(x) for x in line]) + "\n")
 
     # novels = filesIn('data', '.txt.ids')
     # allLines, allIDs = appendFiles(novels, 5)
@@ -136,6 +144,7 @@ def main(_):
     index_shuf = list(range(len(lines)))
     random.shuffle(index_shuf)
     lines = [lines[i] for i in index_shuf]
+    printToFile_standard('shuffled_input.txt', lines)
     ids = [ids[i] for i in index_shuf]
     style_vector = np.load('data/jk_rowling_mean.npy')
 
@@ -165,9 +174,15 @@ def main(_):
         # save_train_dir = get_normalized_train_dir(FLAGS.train_dir)
         save_train_dir = "None"
         model.initialize(sess)
-        classifier_saver.restore(sess, 'ckpts/sentence_classifier/model.ckpt-1')
+        # classifier_saver.restore(sess, 'ckpts/sentence_classifier/model.ckpt-1')
+        saver = tf.train.Saver(var_list=tf.trainable_variables())
+        saver.restore(sess, 'ckpts/generator/model.ckpt-1')
 
-        model.train(sess, dataset, save_train_dir)
+        # model.train(sess, dataset, save_train_dir)
+        decoded_ids = model.generate(sess, dataset, save_train_dir)
+        print(type(decoded_ids[0][0]))
+        printToFile("decoded_ids.txt", decoded_ids)
+        saver.save(sess, 'ckpts/generator/model.ckpt', global_step=1)
 
         # qa.evaluate_answer(sess, dataset, vocab, FLAGS.evaluate, log=True)
 

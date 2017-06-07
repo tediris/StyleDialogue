@@ -59,27 +59,34 @@ class Generator:
         # input is 200 dimensional
         hidden_dim = 100 # TODO: this must match the glove dimensions
         cell = tf.contrib.rnn.GRUCell(hidden_dim)
-        # outputs, final_state = tf.nn.dynamic_rnn(cell, self.encoder_out, sequence_length=self.lines_len_placeholder, dtype=tf.float32)
-        outputs, final_state = tf.nn.dynamic_rnn(cell, self.encoder_out, dtype=tf.float32)
+        outputs, final_state = tf.nn.dynamic_rnn(cell, self.encoder_out, sequence_length=self.lines_len_placeholder, dtype=tf.float32)
+        # outputs, final_state = tf.nn.dynamic_rnn(cell, self.encoder_out, dtype=tf.float32)
         # outputs is batch_size x max_time x 100
-        # reshaped_outputs = tf.reshape()
         # self.decoder_output = tf.layers.dense(outputs, 100)
         max_time = tf.shape(outputs)[1] # this should be dynamic
         batch_size = tf.shape(outputs)[0]
-        # reshaped = tf.reshape(outputs, [batch_size * max_time, hidden_dim])
         # classify all of these as words
         self.decode_output = outputs
-        # self.logits = tf.layers.dense(reshaped, self.vocab_size) # (batch_size x max_time) x vocab
-        # decoded_words = tf.argmax(self.logits, axis=1) # (batch_size x max_time)
-        # self.decoded_sentences = tf.reshape(decoded_words, [batch_size, max_time])
+        batch_size = tf.shape(self.lines_placeholder)[0]
+        max_time = tf.shape(self.lines_placeholder)[1]
+        # batch_size x max_time x 100
+
+        # find the closest word embeddings
+        decode_reshape = tf.reshape(outputs, [-1, 100])
+        decode_normed = tf.nn.l2_normalize(decode_reshape, dim=1)
+        embeddings_normed = tf.nn.l2_normalize(self.pretrained_embeddings, dim=1)
+
+        cosine_similarity = tf.matmul(decode_normed, tf.transpose(embeddings_normed, [1, 0]))
+        closest_words = tf.argmax(cosine_similarity, 1)
+        self.decoded_ids = tf.reshape(closest_words, [batch_size, max_time])
 
     def add_style_op(self):
         hidden_size = 100
         with vs.variable_scope("sentence"):
             cell = tf.contrib.rnn.GRUCell(hidden_size)
-            # outputs, final_state = tf.nn.dynamic_rnn(cell, self.lines, sequence_length=self.lines_len_placeholder, dtype=tf.float32)
-            outputs, final_state = tf.nn.dynamic_rnn(cell, self.decode_output, sequence_length=None, dtype=tf.float32)
-            self.style_features = final_state
+            outputs, final_state = tf.nn.dynamic_rnn(cell, self.decode_output, sequence_length=self.lines_len_placeholder, dtype=tf.float32)
+            # outputs, final_state = tf.nn.dynamic_rnn(cell, self.decode_output, sequence_length=None, dtype=tf.float32)
+            self.style_features = tf.stop_gradient(final_state)
             # batch_size by style size
             # self.mean_features = tf.reduce_mean(self.features, axis=0)
             style_classification = tf.layers.dense(final_state, 5)
@@ -88,8 +95,8 @@ class Generator:
         batch_size = tf.shape(self.lines_placeholder)[0]
         max_time = tf.shape(self.lines_placeholder)[1]
 
-        lines_reduced = tf.reduce_mean(self.lines, axis=1)
-        outputs_reduced = tf.reduce_mean(self.decode_output, axis=1)
+        lines_reduced = self.lines#tf.reduce_mean(self.lines, axis=1)
+        outputs_reduced = self.decode_output#f.reduce_mean(self.decode_output, axis=1)
         self.content_loss = tf.losses.mean_squared_error(lines_reduced, outputs_reduced)
         style_reshaped = tf.reshape(self.style_placeholder, [1, 100])
         style_repeated = tf.tile(style_reshaped, [batch_size, 1])
@@ -131,21 +138,16 @@ class Generator:
         return session.run(output_feed, feed_dict)
 
     def decode(self, session, data):
-        lines_batch, lines_len = data
+        lines_batch, lines_len, style_vector = data
         feed_dict = {}
         feed_dict[self.lines_placeholder] = lines_batch
         feed_dict[self.lines_len_placeholder] = lines_len
+        feed_dict[self.style_placeholder] = style_vector
 
-        output_feed = [self.loss, self.decoded_sentences]
+        output_feed = [self.loss, self.decoded_ids]
         return session.run(output_feed, feed_dict)
 
     def train(self, session, dataset, train_dir):
-
-        # some free code to print out number of parameters in your model
-        # it's always good to check!
-        # you will also want to save your model parameters in train_dir
-        # so that you can use your trained model to make predictions, or
-        # even continue training
 
         tic = time.time()
         params = tf.trainable_variables()
@@ -158,7 +160,7 @@ class Generator:
         train_lines, style_vector = dataset
         max_iters = np.ceil(len(train_lines)/float(self.FLAGS.batch_size))
         print("Max iterations: " + str(max_iters))
-        for epoch in range(1):
+        for epoch in range(10):
             #temp hack to only train on some small subset:
             # max_iters = 1
             for iteration in range(int(max_iters)):
@@ -170,3 +172,26 @@ class Generator:
                 # print("accuracy: " + str(accuracy))
                 print("Current Loss: " + str(loss))
                 # print(grad_norm)
+
+    def generate(self, session, dataset, train_dir):
+
+        #run main training loop: (only 1 epoch for now)
+        train_lines, style_vector = dataset
+        max_iters = np.ceil(len(train_lines)/float(self.FLAGS.batch_size))
+        print("Max iterations: " + str(max_iters))
+        # for epoch in range(1):
+            #temp hack to only train on some small subset:
+            # max_iters = 1
+        all_decoded_ids = []
+        for iteration in range(int(max_iters)):
+            print("Current iteration: " + str(iteration))
+            lines_batch, lines_len = self.make_batch(dataset, iteration)
+            # lr = tf.train.exponential_decay(self.FLAGS.learning_rate, iteration, 100, 0.96) #iteration here should be global when multiple epochs
+            #retrieve useful info from training - see optimize() function to set what we're tracking
+            loss, decoded_ids = self.decode(session, (lines_batch, lines_len, style_vector))
+            all_decoded_ids.append(decoded_ids)
+            # print(decoded_ids)
+            # print("accuracy: " + str(accuracy))
+            print("Current Loss: " + str(loss))
+            # print(grad_norm)
+        return all_decoded_ids
