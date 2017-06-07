@@ -10,7 +10,7 @@ import tensorflow as tf
 
 # from qa_model import Encoder, QASystem, Decoder
 # from model import Classifier
-from generator import Generator
+from noise_model import Generator
 from data import PAD_ID
 from os.path import join as pjoin
 import numpy as np
@@ -140,16 +140,16 @@ def main(_):
     # printToFile("novel_ids.txt", allIDs)
     # printToFile("novel_lines.txt", allLines)
     lines = read_from_file("novel_lines.txt")
-    ids = read_labels_from_file("novel_ids.txt")
-    index_shuf = list(range(len(lines)))
-    random.shuffle(index_shuf)
-    lines = [lines[i] for i in index_shuf]
-    printToFile_standard('shuffled_input.txt', lines)
-    ids = [ids[i] for i in index_shuf]
+    # ids = read_labels_from_file("novel_ids.txt")
+    # index_shuf = list(range(len(lines)))
+    # random.shuffle(index_shuf)
+    # lines = [lines[i] for i in index_shuf]
+    lines = [lines[0]]
+    # printToFile_standard('shuffled_input.txt', lines)
+    # ids = [ids[i] for i in index_shuf]
     style_vector = np.load('data/jk_rowling_mean.npy')
-    style_label = 4
 
-    dataset = (lines, style_vector, style_label)
+    dataset = (lines, style_vector)
     #
     embed_path = "glove.trimmed.{}.npz".format(FLAGS.embedding_size)
     vocab_path = pjoin("vocab", "vocab.dat")
@@ -176,14 +176,16 @@ def main(_):
         save_train_dir = "None"
         model.initialize(sess)
         classifier_saver.restore(sess, 'ckpts/sentence_classifier/model.ckpt-1')
-        saver = tf.train.Saver(var_list=tf.trainable_variables())
-        # saver.restore(sess, 'ckpts/generator/model.ckpt-1')
+        # saver = tf.train.Saver(var_list=tf.trainable_variables())
+        # saver.restore(sess, 'ckpts/noise/model.ckpt-1')
 
-        model.train(sess, dataset, save_train_dir)
+        all_decodes, decoded_ids = model.generate(sess, dataset, save_train_dir)
         # decoded_ids = model.generate(sess, dataset, save_train_dir)
-        # print(type(decoded_ids[0][0]))
-        # printToFile("decoded_ids.txt", decoded_ids)
-        saver.save(sess, 'ckpts/new_gen/model.ckpt', global_step=1)
+        print(type(decoded_ids[0][0]))
+        printToFile("decoded_ids.txt", decoded_ids)
+        # saver.save(sess, 'ckpts/noise/model.ckpt', global_step=1)
+
+        # qa.evaluate_answer(sess, dataset, vocab, FLAGS.evaluate, log=True)
 
 if __name__ == "__main__":
     tf.app.run()
