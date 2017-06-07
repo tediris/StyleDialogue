@@ -13,6 +13,7 @@ import tensorflow as tf
 from generator import Generator
 from data import PAD_ID
 from os.path import join as pjoin
+import numpy as np
 
 import logging
 
@@ -62,22 +63,6 @@ def initialize_vocab(vocab_path):
         return vocab, rev_vocab
     else:
         raise ValueError("Vocabulary file %s not found.", vocab_path)
-
-
-# def get_normalized_train_dir(train_dir):
-#     """
-#     Adds symlink to {train_dir} from /tmp/cs224n-squad-train to canonicalize the
-#     file paths saved in the checkpoint. This allows the model to be reloaded even
-#     if the location of the checkpoint files has moved, allowing usage with CodaLab.
-#     This must be done on both train.py and qa_answer.py in order to work.
-#     """
-#     global_train_dir = '/tmp/cs224n-squad-train'
-#     if os.path.exists(global_train_dir):
-#         os.unlink(global_train_dir)
-#     if not os.path.exists(train_dir):
-#         os.makedirs(train_dir)
-#     os.symlink(os.path.abspath(train_dir), global_train_dir)
-#     return global_train_dir
 
 
 def main(_):
@@ -152,24 +137,13 @@ def main(_):
     random.shuffle(index_shuf)
     lines = [lines[i] for i in index_shuf]
     ids = [ids[i] for i in index_shuf]
+    style_vector = np.load('data/jk_rowling_mean.npy')
 
-    # train_enc = read_from_file(FLAGS.data_dir + "/train.ids.enc")
-    # train_dec = read_from_file(FLAGS.data_dir + "/train.ids.dec")
-    # # train_span = read_from_file(FLAGS.data_dir + "/train.span")
-    # val_enc = read_from_file(FLAGS.data_dir + "/test.ids.enc")
-    # val_dec = read_from_file(FLAGS.data_dir + "/test.ids.dec")
-    # # val_span = read_from_file(FLAGS.data_dir + "/val.span")
-
-    dataset = (lines)
+    dataset = (lines, style_vector)
     #
     embed_path = "glove.trimmed.{}.npz".format(FLAGS.embedding_size)
     vocab_path = pjoin("vocab", "vocab.dat")
     vocab, rev_vocab = initialize_vocab(vocab_path)
-    #
-    # # encoder = Encoder(size=FLAGS.state_size, vocab_dim=FLAGS.embedding_size)
-    # # decoder = Decoder(output_size=FLAGS.output_size)
-    #
-    # # qa = QASystem(encoder, decoder, FLAGS)
     model = Generator(FLAGS, len(vocab))
     #
     if not os.path.exists(FLAGS.log_dir):
@@ -184,10 +158,15 @@ def main(_):
     with tf.Session() as sess:
         # load_train_dir = get_normalized_train_dir(FLAGS.load_train_dir or FLAGS.train_dir)
         # initialize_model(sess, qa, load_train_dir)
+        classifier_weights = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="sentence")
+        # print(classifier_weights)
+        classifier_saver = tf.train.Saver(classifier_weights)
 
         # save_train_dir = get_normalized_train_dir(FLAGS.train_dir)
-        save_train_dir = "derrrrr"
+        save_train_dir = "None"
         model.initialize(sess)
+        classifier_saver.restore(sess, 'ckpts/sentence_classifier/model.ckpt-1')
+
         model.train(sess, dataset, save_train_dir)
 
         # qa.evaluate_answer(sess, dataset, vocab, FLAGS.evaluate, log=True)

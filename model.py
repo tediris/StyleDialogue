@@ -23,11 +23,6 @@ class Classifier:
         session.run(self.init_op)
 
     def setup_placeholders(self):
-        # self.q_placeholder = tf.placeholder(tf.int32, shape=[None, None], name="q_place") #batch by seq (None, None)
-        # self.p_placeholder = tf.placeholder(tf.int32, shape=[None, None], name="p_place")
-        # self.q_mask_placeholder = tf.placeholder(tf.int32, shape=[None], name="q_mask") #batch (None)
-        # self.p_mask_placeholder = tf.placeholder(tf.int32, shape=[None], name="p_mask")
-
         self.lines_placeholder = tf.placeholder(tf.int32, shape=[None, None], name="lines_place")
         self.lines_len_placeholder = tf.placeholder(tf.int32, shape=[None], name="lines_mask")
         self.labels_placeholder = tf.placeholder(tf.int32, shape=[None], name="labels_place")
@@ -54,9 +49,12 @@ class Classifier:
     def add_prediction_op(self):
         hidden_size = 100
         self.test_size = tf.shape(self.lines)
-        cell = tf.contrib.rnn.GRUCell(hidden_size)
-        outputs, final_state = tf.nn.dynamic_rnn(cell, self.lines, sequence_length=self.lines_len_placeholder, dtype=tf.float32)
-        self.logits = tf.layers.dense(final_state, 5)
+        with vs.variable_scope("sentence"):
+            cell = tf.contrib.rnn.GRUCell(hidden_size)
+            outputs, final_state = tf.nn.dynamic_rnn(cell, self.lines, sequence_length=self.lines_len_placeholder, dtype=tf.float32)
+            self.features = final_state
+            self.mean_features = tf.reduce_mean(self.features, axis=0)
+            self.logits = tf.layers.dense(final_state, 5)
 
     def add_loss_op(self):
         one_hot_labels = tf.one_hot(self.labels_placeholder, depth=NUM_CLASSES)
@@ -110,6 +108,16 @@ class Classifier:
         output_feed = [self.loss, self.accuracy]
         return session.run(output_feed, feed_dict)
 
+    def generate_embeddings(self, session, data):
+        lines_batch, lines_len, labels_batch = data
+        feed_dict = {}
+        feed_dict[self.lines_placeholder] = lines_batch
+        feed_dict[self.lines_len_placeholder] = lines_len
+        feed_dict[self.labels_placeholder] = labels_batch
+
+        output_feed = [self.mean_features]
+        return session.run(output_feed, feed_dict)
+
     def test(self, session, dataset):
         tic = time.time()
         params = tf.trainable_variables()
@@ -137,6 +145,29 @@ class Classifier:
         accuracy = np.mean(np.array(accuracies))
         print("Total accuracy:" + str(accuracy))
 
+    def generate_mean_embeddings(self, session, dataset):
+        train_lines, train_labels = dataset
+        max_iters = np.ceil(len(train_lines)/float(self.FLAGS.batch_size))
+        print("Max iterations: " + str(max_iters))
+        mean_features = np.zeros(100)
+        for iteration in range(int(max_iters)):
+            # print("Current iteration: " + str(iteration))
+            if iteration % 10 == 0:
+                print("Current iteration: " + str(iteration))
+
+            lines_batch, lines_len, labels_batch = self.make_batch(dataset, iteration)
+            # lr = tf.train.exponential_decay(self.FLAGS.learning_rate, iteration, 100, 0.96) #iteration here should be global when multiple epochs
+            #retrieve useful info from training - see optimize() function to set what we're tracking
+            features = self.generate_embeddings(session, (lines_batch, lines_len, labels_batch))
+            features = features[0]
+            # print(len(features))
+            # print("accuracy: " + str(accuracy))
+            mean_features += np.array(features)
+        mean_features /= max_iters
+        # print("Total accuracy:" + str(accuracy))
+        return mean_features
+
+
     def train(self, session, dataset, train_dir):
 
         # some free code to print out number of parameters in your model
@@ -156,7 +187,7 @@ class Classifier:
         train_lines, train_labels = dataset
         max_iters = np.ceil(len(train_lines)/float(self.FLAGS.batch_size))
         print("Max iterations: " + str(max_iters))
-        for epoch in range(1):
+        for epoch in range(5):
             #temp hack to only train on some small subset:
             # max_iters = 1
             for iteration in range(int(max_iters)):

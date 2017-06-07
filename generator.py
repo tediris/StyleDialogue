@@ -7,13 +7,15 @@ import logging
 
 
 class Generator:
-    def __init__(self, FLAGS, vocab_size):
+    def __init__(self, FLAGS, vocab_size, classifier=None):
+        self.classifier = classifier
         self.vocab_size = vocab_size
         self.FLAGS = FLAGS
         self.setup_placeholders()
         self.setup_embeddings()
         self.encoder()
         self.decoder()
+        self.add_style_op()
         self.loss_op()
         self.optimization_op()
         self.init_op = tf.global_variables_initializer()
@@ -34,7 +36,8 @@ class Generator:
     def setup_placeholders(self):
         self.lines_placeholder = tf.placeholder(tf.int32, shape=[None, None], name="lines_place")
         self.lines_len_placeholder = tf.placeholder(tf.int32, shape=[None], name="lines_mask")
-        self.labels_placeholder = tf.placeholder(tf.int32, shape=[None], name="labels_place")
+        # self.labels_placeholder = tf.placeholder(tf.int32, shape=[None], name="labels_place")
+        self.style_placeholder = tf.placeholder(tf.int32, shape=[100], name="style_place")
 
     def encoder(self):
         hidden_size = 100
@@ -53,46 +56,47 @@ class Generator:
         self.encoder_out = tf.concat([outputs[0], outputs[1]], axis=2)
 
     def decoder(self):
-        # input is 1000 dimensional
-        hidden_dim = 200
+        # input is 200 dimensional
+        hidden_dim = 100 # TODO: this must match the glove dimensions
         cell = tf.contrib.rnn.GRUCell(hidden_dim)
         # outputs, final_state = tf.nn.dynamic_rnn(cell, self.encoder_out, sequence_length=self.lines_len_placeholder, dtype=tf.float32)
         outputs, final_state = tf.nn.dynamic_rnn(cell, self.encoder_out, dtype=tf.float32)
         # outputs is batch_size x max_time x 100
+        # reshaped_outputs = tf.reshape()
+        # self.decoder_output = tf.layers.dense(outputs, 100)
         max_time = tf.shape(outputs)[1] # this should be dynamic
         batch_size = tf.shape(outputs)[0]
-        reshaped = tf.reshape(outputs, [batch_size * max_time, hidden_dim])
+        # reshaped = tf.reshape(outputs, [batch_size * max_time, hidden_dim])
         # classify all of these as words
-        self.logits = tf.layers.dense(reshaped, self.vocab_size) # (batch_size x max_time) x vocab
-        decoded_words = tf.argmax(self.logits, axis=1) # (batch_size x max_time)
-        self.decoded_sentences = tf.reshape(decoded_words, [batch_size, max_time])
+        self.decode_output = outputs
+        # self.logits = tf.layers.dense(reshaped, self.vocab_size) # (batch_size x max_time) x vocab
+        # decoded_words = tf.argmax(self.logits, axis=1) # (batch_size x max_time)
+        # self.decoded_sentences = tf.reshape(decoded_words, [batch_size, max_time])
+
+    def add_style_op(self):
+        hidden_size = 100
+        with vs.variable_scope("sentence"):
+            cell = tf.contrib.rnn.GRUCell(hidden_size)
+            # outputs, final_state = tf.nn.dynamic_rnn(cell, self.lines, sequence_length=self.lines_len_placeholder, dtype=tf.float32)
+            outputs, final_state = tf.nn.dynamic_rnn(cell, self.decode_output, sequence_length=None, dtype=tf.float32)
+            self.style_features = final_state
+            # batch_size by style size
+            # self.mean_features = tf.reduce_mean(self.features, axis=0)
+            style_classification = tf.layers.dense(final_state, 5)
 
     def loss_op(self):
         batch_size = tf.shape(self.lines_placeholder)[0]
         max_time = tf.shape(self.lines_placeholder)[1]
-        reshaped_input = tf.reshape(self.lines_placeholder, [batch_size * max_time,])
 
-        # self.lines are the looked-up input, batch_size x max_time x 100
-        # pretrained_embeddings is vocab_size x 100
-        lines_flat = tf.reshape(self.lines, [batch_size * max_time, -1])
-        lines_flat = tf.nn.l2_normalize(lines_flat, dim=-1)
-        embeddings_norm = tf.nn.l2_normalize(self.pretrained_embeddings, dim=-1)
-        vocab_weights = tf.matmul(lines_flat, tf.transpose(embeddings_norm))
-
-        ### TESTING THIS ###
-        probs = tf.nn.softmax(self.logits, dim=-1)
-
-        # self.loss = tf.reduce_mean(tf.losses.softmax_cross_entropy(onehot_labels=one_hot_labels, logits=self.logits))
-        self.loss = tf.reduce_mean(tf.losses.cosine_distance(vocab_weights, probs, dim=-1))
-        # this is (batch_size x time) x vocab_size
-        # vocab_weights = tf.nn.l2_normalize(vocab_weights, dim=-1)
-        # vocab_weights = 1.0 - (vocab_weights / tf.reduce_max(vocab_weights, axis=-1))
-        # probs = tf.nn.softmax(self.logits, dim=-1)
-        # probs = tf.nn.log_softmax(self.logits, dim=-1)
-        # weighted_scores = vocab_weights * probs
-        # self.loss = -tf.reduce_mean(weighted_scores)
-        # one_hot_labels = tf.one_hot(reshaped_input, depth=self.vocab_size) # (batch_size x max_time) x vocab
-        # self.loss = tf.reduce_mean(tf.losses.softmax_cross_entropy(onehot_labels=one_hot_labels, logits=self.logits))
+        lines_reduced = tf.reduce_mean(self.lines, axis=1)
+        outputs_reduced = tf.reduce_mean(self.decode_output, axis=1)
+        self.content_loss = tf.losses.mean_squared_error(lines_reduced, outputs_reduced)
+        style_reshaped = tf.reshape(self.style_placeholder, [1, 100])
+        style_repeated = tf.tile(style_reshaped, [batch_size, 1])
+        self.style_loss = tf.losses.mean_squared_error(style_repeated, self.style_features)
+        alpha = 1.0
+        beta = 1.0
+        self.loss = alpha * self.content_loss + beta * self.style_loss
 
     def optimization_op(self):
         optimizer = tf.train.AdamOptimizer() # select optimizer and set learning rate
@@ -103,7 +107,7 @@ class Generator:
 
     def make_batch(self, dataset, iteration):
         batch_size = self.FLAGS.batch_size
-        train_lines = dataset
+        train_lines, _ = dataset
         start_index = iteration*batch_size
 
         #make padded enc batch
@@ -117,10 +121,11 @@ class Generator:
     # def build_model(self):
     #     self.test =
     def optimize(self, session, data):
-        lines_batch, lines_len = data
+        lines_batch, lines_len, style_vector = data
         feed_dict = {}
         feed_dict[self.lines_placeholder] = lines_batch
         feed_dict[self.lines_len_placeholder] = lines_len
+        feed_dict[self.style_placeholder] = style_vector
 
         output_feed = [self.loss, self.train_step]
         return session.run(output_feed, feed_dict)
@@ -150,7 +155,7 @@ class Generator:
 
 
         #run main training loop: (only 1 epoch for now)
-        train_lines = dataset
+        train_lines, style_vector = dataset
         max_iters = np.ceil(len(train_lines)/float(self.FLAGS.batch_size))
         print("Max iterations: " + str(max_iters))
         for epoch in range(1):
@@ -161,7 +166,7 @@ class Generator:
                 lines_batch, lines_len = self.make_batch(dataset, iteration)
                 # lr = tf.train.exponential_decay(self.FLAGS.learning_rate, iteration, 100, 0.96) #iteration here should be global when multiple epochs
                 #retrieve useful info from training - see optimize() function to set what we're tracking
-                loss, _ = self.optimize(session, (lines_batch, lines_len))
+                loss, _ = self.optimize(session, (lines_batch, lines_len, style_vector))
                 # print("accuracy: " + str(accuracy))
                 print("Current Loss: " + str(loss))
                 # print(grad_norm)

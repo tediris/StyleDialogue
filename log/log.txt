@@ -38,3 +38,28 @@ Number of params: 26096272 (retreival took 0.670773 secs)
 Number of params: 4033872 (retreival took 0.670939 secs)
 Number of params: 4033872 (retreival took 0.698493 secs)
 Number of params: 4033872 (retreival took 0.729436 secs)
+Restoring parameters from ckpts/model.ckpt
+Restoring parameters from ckpts/model.ckpt
+Restoring parameters from ckpts/model.ckpt
+Restoring parameters from ckpts/model.ckpt
+Restoring parameters from ckpts/model.ckpt
+Restoring parameters from ckpts/model.ckpt
+Number of params: 210900 (retreival took 0.582257 secs)
+Restoring parameters from ckpts/model.ckpt
+Number of params: 60805 (retreival took 0.165539 secs)
+Number of params: 60805 (retreival took 0.150115 secs)
+Number of params: 60805 (retreival took 0.164324 secs)
+Number of params: 60805 (retreival took 0.157863 secs)
+Number of params: 60805 (retreival took 0.165918 secs)
+Restoring parameters from ckpts/sentence_classifier/model.ckpt
+Restoring parameters from ckpts/sentence_classifier/model.ckpt-1
+Restoring parameters from ckpts/sentence_classifier/model.ckpt-1
+Restoring parameters from ckpts/sentence_classifier/model.ckpt-1
+Restoring parameters from ckpts/sentence_classifier/model.ckpt-1
+Restoring parameters from ckpts/sentence_classifier/model.ckpt-1
+Restoring parameters from ckpts/sentence_classifier/model.ckpt-1
+Restoring parameters from ckpts/sentence_classifier/model.ckpt-1
+Restoring parameters from ckpts/sentence_classifier/model.ckpt-1
+Number of params: 271705 (retreival took 1.241502 secs)
+Restoring parameters from ckpts/sentence_classifier/model.ckpt-1
+Number of params: 271705 (retreival took 1.183834 secs)

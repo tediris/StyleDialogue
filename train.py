@@ -12,10 +12,11 @@ import tensorflow as tf
 from model import Classifier
 from data import PAD_ID
 from os.path import join as pjoin
+import numpy as np
 
 import logging
 
-TRAINING = True
+TRAINING = False
 
 logging.basicConfig(level=logging.INFO)
 
@@ -148,8 +149,12 @@ def main(_):
     # # print(allLines[:10])
     # printToFile("novel_ids.txt", allIDs)
     # printToFile("novel_lines.txt", allLines)
-    lines = read_from_file("novel_lines.txt")
-    ids = read_labels_from_file("novel_ids.txt")
+
+
+    # lines = read_from_file("novel_lines.txt")
+    lines = read_from_file("data/braum_stoker.txt.ids")
+    # ids = read_labels_from_file("novel_ids.txt")
+    ids = [0] * len(lines)
     index_shuf = list(range(len(lines)))
     random.shuffle(index_shuf)
     lines = [lines[i] for i in index_shuf]
@@ -183,24 +188,26 @@ def main(_):
     with open(os.path.join(FLAGS.log_dir, "flags.json"), 'w') as fout:
         json.dump(FLAGS.__flags, fout)
     #
-    saver = tf.train.Saver()
     with tf.Session() as sess:
         # load_train_dir = get_normalized_train_dir(FLAGS.load_train_dir or FLAGS.train_dir)
         # initialize_model(sess, qa, load_train_dir)
 
         # save_train_dir = get_normalized_train_dir(FLAGS.train_dir)
-        save_train_dir = "derrrrr"
+        save_train_dir = "None"
         model.initialize(sess)
-        saver.restore(sess, 'ckpts/model.ckpt')
+        saver = tf.train.Saver(var_list=tf.trainable_variables())
+        saver.restore(sess, 'ckpts/sentence_classifier/model.ckpt-1')
 
         if TRAINING:
             print("TRAINING MODEL")
             model.train(sess, dataset, save_train_dir)
-            saver.save(sess, 'ckpts/model.ckpt', global_step=1)
+            saver.save(sess, 'ckpts/sentence_classifier/model.ckpt', global_step=1)
         else:
             print("RESTORING MODEL")
             # saver.restore(sess, 'ckpts/model.ckpt')
-            model.test(sess, dataset)
+            # model.test(sess, dataset)
+            mean_features = model.generate_mean_embeddings(sess, dataset)
+            np.save('data/braum_stoker_mean', mean_features)
 
         # qa.evaluate_answer(sess, dataset, vocab, FLAGS.evaluate, log=True)
 
