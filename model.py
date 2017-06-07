@@ -100,6 +100,43 @@ class Classifier:
         output_feed = [self.loss, self.accuracy, self.train_step]
         return session.run(output_feed, feed_dict)
 
+    def classify(self, session, data):
+        lines_batch, lines_len, labels_batch = data
+        feed_dict = {}
+        feed_dict[self.lines_placeholder] = lines_batch
+        feed_dict[self.lines_len_placeholder] = lines_len
+        feed_dict[self.labels_placeholder] = labels_batch
+
+        output_feed = [self.loss, self.accuracy]
+        return session.run(output_feed, feed_dict)
+
+    def test(self, session, dataset):
+        tic = time.time()
+        params = tf.trainable_variables()
+        num_params = sum(map(lambda t: np.prod(tf.shape(t.value()).eval()), params))
+        toc = time.time()
+        logging.info("Number of params: %d (retreival took %f secs)" % (num_params, toc - tic))
+
+
+        #run main training loop: (only 1 epoch for now)
+        train_lines, train_labels = dataset
+        max_iters = np.ceil(len(train_lines)/float(self.FLAGS.batch_size))
+        print("Max iterations: " + str(max_iters))
+        accuracies = []
+        for iteration in range(int(max_iters)):
+            # print("Current iteration: " + str(iteration))
+            if iteration % 10 == 0:
+                print("Current iteration: " + str(iteration))
+
+            lines_batch, lines_len, labels_batch = self.make_batch(dataset, iteration)
+            # lr = tf.train.exponential_decay(self.FLAGS.learning_rate, iteration, 100, 0.96) #iteration here should be global when multiple epochs
+            #retrieve useful info from training - see optimize() function to set what we're tracking
+            loss, accuracy = self.classify(session, (lines_batch, lines_len, labels_batch))
+            # print("accuracy: " + str(accuracy))
+            accuracies.append(accuracy)
+        accuracy = np.mean(np.array(accuracies))
+        print("Total accuracy:" + str(accuracy))
+
     def train(self, session, dataset, train_dir):
 
         # some free code to print out number of parameters in your model
@@ -123,11 +160,12 @@ class Classifier:
             #temp hack to only train on some small subset:
             # max_iters = 1
             for iteration in range(int(max_iters)):
-                print("Current iteration: " + str(iteration))
                 lines_batch, lines_len, labels_batch = self.make_batch(dataset, iteration)
                 # lr = tf.train.exponential_decay(self.FLAGS.learning_rate, iteration, 100, 0.96) #iteration here should be global when multiple epochs
                 #retrieve useful info from training - see optimize() function to set what we're tracking
                 loss, accuracy, _ = self.optimize(session, (lines_batch, lines_len, labels_batch))
-                print("accuracy: " + str(accuracy))
+                if iteration % 10 == 0:
+                    print("Current iteration: " + str(iteration))
+                    print("accuracy: " + str(accuracy))
                 # print("Current Loss: " + str(loss))
                 # print(grad_norm)

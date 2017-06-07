@@ -37,7 +37,7 @@ class Generator:
         self.labels_placeholder = tf.placeholder(tf.int32, shape=[None], name="labels_place")
 
     def encoder(self):
-        hidden_size = 500
+        hidden_size = 100
         cell_fw = tf.contrib.rnn.GRUCell(hidden_size)
         cell_bw = tf.contrib.rnn.GRUCell(hidden_size)
         outputs, output_states = tf.nn.bidirectional_dynamic_rnn(
@@ -54,7 +54,7 @@ class Generator:
 
     def decoder(self):
         # input is 1000 dimensional
-        hidden_dim = 1000
+        hidden_dim = 200
         cell = tf.contrib.rnn.GRUCell(hidden_dim)
         # outputs, final_state = tf.nn.dynamic_rnn(cell, self.encoder_out, sequence_length=self.lines_len_placeholder, dtype=tf.float32)
         outputs, final_state = tf.nn.dynamic_rnn(cell, self.encoder_out, dtype=tf.float32)
@@ -71,8 +71,21 @@ class Generator:
         batch_size = tf.shape(self.lines_placeholder)[0]
         max_time = tf.shape(self.lines_placeholder)[1]
         reshaped_input = tf.reshape(self.lines_placeholder, [batch_size * max_time,])
-        one_hot_labels = tf.one_hot(reshaped_input, depth=self.vocab_size) # (batch_size x max_time) x vocab
-        self.loss = tf.reduce_mean(tf.losses.softmax_cross_entropy(onehot_labels=one_hot_labels, logits=self.logits))
+
+        # self.lines are the looked-up input, batch_size x max_time x 100
+        # pretrained_embeddings is vocab_size x 100
+        lines_flat = tf.reshape(self.lines, [batch_size * max_time, -1])
+        vocab_weights = tf.matmul(lines_flat, tf.transpose(self.pretrained_embeddings))
+        # this is (batch_size x time) x vocab_size
+        # vocab_weights = tf.nn.l2_normalize(vocab_weights, dim=-1)
+        # vocab_weights = 1.0 - (vocab_weights / tf.reduce_max(vocab_weights, axis=-1))
+        probs = tf.nn.softmax(self.logits, dim=-1)
+        # probs = tf.nn.log_softmax(self.logits, dim=-1)
+        weighted_scores = vocab_weights * probs
+        self.loss = -tf.reduce_mean(weighted_scores)
+
+        # one_hot_labels = tf.one_hot(reshaped_input, depth=self.vocab_size) # (batch_size x max_time) x vocab
+        # self.loss = tf.reduce_mean(tf.losses.softmax_cross_entropy(onehot_labels=one_hot_labels, logits=self.logits))
 
     def optimization_op(self):
         optimizer = tf.train.AdamOptimizer() # select optimizer and set learning rate
@@ -103,6 +116,15 @@ class Generator:
         feed_dict[self.lines_len_placeholder] = lines_len
 
         output_feed = [self.loss, self.train_step]
+        return session.run(output_feed, feed_dict)
+
+    def decode(self, session, data):
+        lines_batch, lines_len = data
+        feed_dict = {}
+        feed_dict[self.lines_placeholder] = lines_batch
+        feed_dict[self.lines_len_placeholder] = lines_len
+
+        output_feed = [self.loss, self.decoded_sentences]
         return session.run(output_feed, feed_dict)
 
     def train(self, session, dataset, train_dir):
